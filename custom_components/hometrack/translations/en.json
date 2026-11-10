@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up HomeTrack",
+        "description": "HomeTrack adds a House plan panel to the sidebar, where you draw your floors and rooms and place your Bluetooth receivers."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "HomeTrack is already set up."
+    }
+  }
+}

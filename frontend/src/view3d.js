@@ -2,7 +2,7 @@
 // world y is height. Renders on demand rather than every frame.
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { planBounds, sortedFloors } from "./model.js";
+import { northVector, planBounds, sortedFloors } from "./model.js";
 
 const COLORS = { room: 0x5c9ded, active: 0x03a9f4, selected: 0xff9800, receiver: 0x43a047, wall: 0x90a4ae };
 
@@ -53,7 +53,8 @@ export class Plan3D {
   /** Point the camera at the whole house, sized to the current viewport. */
   fit(plan) {
     this._fitPlan = plan;
-    const b = planBounds(plan, null, 0.5);
+    // Generous padding so the north arrow just outside the house stays in view.
+    const b = planBounds(plan, null, 2.5);
     const floors = sortedFloors(plan);
     const top = floors.length ? floors[floors.length - 1] : { elevation: 0, height: 2.5 };
     const topY = top.elevation + top.height;
@@ -80,6 +81,7 @@ export class Plan3D {
     grid.material.transparent = true;
     grid.material.opacity = 0.35;
     this.content.add(grid);
+    this.content.add(northArrow(plan, b));
 
     for (const room of plan.rooms) {
       const floor = floors.get(room.floor_id);
@@ -161,10 +163,44 @@ function roomMesh(room, floor, active, selected) {
   return group;
 }
 
+/** A flat red arrow on the ground just outside the house, pointing north, with an "N". */
+function northArrow(plan, b) {
+  const [nx, nz] = northVector(plan.north);
+  const cx = (b.minX + b.maxX) / 2, cz = (b.minY + b.maxY) / 2;
+  const reach = Math.max(b.maxX - b.minX, b.maxY - b.minY) / 2 + 0.3;
+  const len = 1.6;
+  const start = new THREE.Vector3(cx + nx * reach, 0.02, cz + nz * reach);
+  const dir = new THREE.Vector3(nx, 0, nz);
+  const group = new THREE.Group();
+  const red = new THREE.MeshBasicMaterial({ color: 0xe53935 });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, len - 0.4, 8), red);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.4, 16), red.clone());
+  // Cylinder and cone point along +y; turn them to lie along `dir`.
+  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  shaft.quaternion.copy(q); head.quaternion.copy(q);
+  shaft.position.copy(start).addScaledVector(dir, (len - 0.4) / 2);
+  head.position.copy(start).addScaledVector(dir, len - 0.2);
+  group.add(shaft, head);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#e53935";
+  ctx.font = "bold 48px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("N", 32, 34);
+  const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false }));
+  label.scale.set(0.6, 0.6, 0.6);
+  label.position.copy(start).addScaledVector(dir, len + 0.4).setY(0.35);
+  group.add(label);
+  return group;
+}
+
 function disposeGroup(group) {
   group.traverse((obj) => {
     obj.geometry?.dispose();
-    if (obj.material) [].concat(obj.material).forEach((m) => m.dispose());
+    if (obj.material) [].concat(obj.material).forEach((m) => { m.map?.dispose(); m.dispose(); });
   });
   group.clear();
 }

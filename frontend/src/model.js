@@ -9,6 +9,7 @@ export const DEFAULT_STOREY = 2.5;
 export function defaultPlan() {
   return {
     version: PLAN_VERSION,
+    north: 0,
     floors: [{ id: "ground", name: "Ground floor", elevation: 0, height: DEFAULT_STOREY }],
     rooms: [],
     receivers: [],
@@ -23,6 +24,27 @@ export const round = (v, digits = 3) => Math.round(v * 10 ** digits) / 10 ** dig
 
 export function snap(v, step) {
   return step > 0 ? round(Math.round(v / step) * step) : v;
+}
+
+/** Angle in degrees normalised to [0, 360). */
+export function normalizeAngle(deg) {
+  const a = round(((deg % 360) + 360) % 360, 2);
+  return a === 360 ? 0 : a;
+}
+
+/**
+ * Unit vector pointing north on the plan. `north` is degrees clockwise from
+ * "up" on the plan (the -y direction), so 0 gives [0, -1] and 90 gives [1, 0].
+ */
+export function northVector(north) {
+  const r = ((north || 0) * Math.PI) / 180;
+  return [round(Math.sin(r), 9) + 0, round(-Math.cos(r), 9) + 0]; // "+ 0" turns -0 into 0
+}
+
+/** Compass bearing (0 = north, 90 = east) of a direction [dx, dy] on the plan. */
+export function bearing(north, [dx, dy]) {
+  const up = (Math.atan2(dx, -dy) * 180) / Math.PI; // clockwise from plan "up"
+  return normalizeAngle(up - (north || 0));
 }
 
 export function sortedFloors(plan) {

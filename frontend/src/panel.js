@@ -117,7 +117,7 @@ class HomeTrackPanel extends HTMLElement {
 
   _dirty() { return JSON.stringify(this.plan) !== this.savedJson; }
 
-  // ── History ────────────────────────────────────────────────────────────────
+  // ── History ──────────────────────────────────────────────────────────────────────
 
   _mutate(fn) {
     const before = JSON.stringify(this.plan);
@@ -146,7 +146,7 @@ class HomeTrackPanel extends HTMLElement {
     this._renderAll();
   }
 
-  // ── Lookups ────────────────────────────────────────────────────────────────
+  // ── Lookups ──────────────────────────────────────────────────────────────────────
 
   _floor() { return this.plan.floors.find((f) => f.id === this.floorId); }
   _selected() {
@@ -777,7 +777,7 @@ class HomeTrackPanel extends HTMLElement {
 }
 
 const STYLE = `
-:host { display: block; height: 100%; background: var(--primary-background-color, #fafafa);
+:host { display: block; height: 100vh; height: 100dvh; background: var(--primary-background-color, #fafafa);
   color: var(--primary-text-color, #212121); font-family: var(--paper-font-body1_-_font-family, Roboto, system-ui, sans-serif); font-size: 14px;
   --accent: var(--primary-color, #03a9f4); --line: var(--divider-color, rgba(0,0,0,.12)); --card: var(--card-background-color, #fff);
   --muted: var(--secondary-text-color, #727272); }

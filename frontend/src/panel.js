@@ -3,6 +3,7 @@
 // (view3d.js) is a live, read-only preview of the same plan.
 import * as m from "./model.js";
 import { Plan3D } from "./view3d.js";
+import { STYLE } from "./styles.js";
 
 const TOOLS = [
   { id: "select", label: "Select", key: "v" },
@@ -252,7 +253,8 @@ class HomeTrackPanel extends HTMLElement {
     r.getElementById("floors").innerHTML =
       m.sortedFloors(this.plan).map((f) =>
         `<button class="chip ${f.id === this.floorId ? "on" : ""}" data-action="floor" data-id="${esc(f.id)}">${esc(f.name || "Floor")}</button>`).join("") +
-      `<button class="chip add" data-action="add-floor" title="Add a floor on top">+ Floor</button>`;
+      `<button class="chip add" data-action="add-floor" title="Add a floor on top of the highest one">+ Floor above</button>` +
+      `<button class="chip add" data-action="add-floor-below" title="Add a cellar or basement below the lowest floor">+ Floor below</button>`;
     r.getElementById("tools").innerHTML = TOOLS.map((t) =>
       `<button class="${t.id === this.tool ? "on" : ""}" data-action="tool" data-id="${t.id}" title="${t.label} (${t.key.toUpperCase()})">${t.label}</button>`).join("");
     r.getElementById("views").innerHTML = VIEWS.map((v) =>
@@ -267,7 +269,14 @@ class HomeTrackPanel extends HTMLElement {
     if (item && this.sel.kind === "room") html = this._roomProps(item);
     else if (item && this.sel.kind === "receiver") html = this._receiverProps(item);
     else html = this._floorProps();
+    // Keep keyboard focus on the same field across re-renders (e.g. tabbing between wall lengths).
+    const focused = this.shadowRoot.activeElement?.dataset?.field;
     this.$side.innerHTML = html;
+    if (focused) {
+      const el = this.$side.querySelector(`[data-field="${focused}"]`);
+      el?.focus();
+      if (el?.select) el.select();
+    }
   }
 
   _roomProps(room) {
@@ -280,10 +289,21 @@ class HomeTrackPanel extends HTMLElement {
           ${areas.map((a) => `<option value="${esc(a.area_id)}" ${a.area_id === room.area_id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
         </select>
       </label>
+      <h4>Position of corner 1</h4>
+      <p class="muted">Corner 1 (the filled orange corner) is the room's reference point, measured from 0, 0. Changing it moves the whole room.</p>
+      <div class="row2">
+        <label>X (m)<input type="number" step="0.05" data-field="room.x" value="${room.polygon[0][0]}"></label>
+        <label>Y (m)<input type="number" step="0.05" data-field="room.y" value="${room.polygon[0][1]}"></label>
+      </div>
+      <h4>Walls</h4>
+      <p class="muted">Changing a length stretches the room along that wall; the far end moves.</p>
+      <div class="walls">
+        ${m.edgeLengths(room.polygon).map((len, i) => `<label class="wall"><span>Wall ${i + 1} <span class="muted">· corner ${i + 1} → ${(i + 1) % room.polygon.length + 1}</span></span>
+          <span class="unit"><input type="number" step="0.05" min="0.1" data-field="wall.${i}" value="${fmt(len, 3)}"> m</span></label>`).join("")}
+      </div>
       <dl>
         <dt>Floor area</dt><dd>${fmt(m.polygonArea(room.polygon), 1)} m²</dd>
         <dt>Perimeter</dt><dd>${fmt(m.perimeter(room.polygon), 1)} m</dd>
-        <dt>Corners</dt><dd>${room.polygon.length}</dd>
       </dl>
       <div class="actions">
         <button data-action="deselect">Done</button>
@@ -325,6 +345,7 @@ class HomeTrackPanel extends HTMLElement {
         <label>Elevation (m)<input type="number" step="0.05" data-field="floor.elevation" value="${f.elevation}"></label>
         <label>Storey height (m)<input type="number" step="0.05" min="1" data-field="floor.height" value="${f.height}"></label>
       </div>
+      <p class="muted">Elevation is the height of this floor's surface above ground level (0 m). Cellars and basements have a negative elevation.</p>
       <h4>Rooms (${rooms.length})</h4>
       <ul class="list">${rooms.map((r) => `<li data-action="select" data-kind="room" data-id="${esc(r.id)}"><span>${esc(r.name || "Unnamed")}</span><span class="muted">${fmt(m.polygonArea(r.polygon), 1)} m²</span></li>`).join("") || `<li class="muted empty">None yet. Use Draw room or Rectangle.</li>`}</ul>
       <h4>Receivers (${recs.length})</h4>
@@ -361,7 +382,10 @@ class HomeTrackPanel extends HTMLElement {
       lines.push(`<line class="${major ? "g5" : "g"}" x1="${vb.x}" y1="${y}" x2="${vb.x + vb.w}" y2="${y}"/>`);
     }
     out.push(`<g>${lines.join("")}</g>`);
-    out.push(`<line class="axis" x1="${vb.x}" y1="0" x2="${vb.x + vb.w}" y2="0"/><line class="axis" x1="0" y1="${vb.y}" x2="0" y2="${vb.y + vb.h}"/>`);
+    // Axes through the origin (x to the right, y downwards) and a 0, 0 marker.
+    out.push(`<line class="axis x" x1="${vb.x}" y1="0" x2="${vb.x + vb.w}" y2="0"/><line class="axis y" x1="0" y1="${vb.y}" x2="0" y2="${vb.y + vb.h}"/>`);
+    out.push(`<circle class="origin" cx="0" cy="0" r="${px(4)}"/>`);
+    out.push(`<text class="origin-label" x="${px(6)}" y="${-px(6)}" font-size="${px(11)}">0, 0</text>`);
 
     // The floor below, as a dashed outline to line walls up against.
     const below = m.floorBelow(this.plan, this.floorId);
@@ -394,8 +418,15 @@ class HomeTrackPanel extends HTMLElement {
         if (len * this.view.scale < 40) return;
         out.push(`<text class="dim" x="${(a[0] + b[0]) / 2}" y="${(a[1] + b[1]) / 2}" font-size="${px(11)}">${fmt(len)} m</text>`);
       });
+      const [cx, cy] = m.centroid(poly);
+      poly.forEach(([x, y], i) => {
+        // Corner numbers sit just outside the room, away from its centre.
+        const d = Math.hypot(x - cx, y - cy) || 1;
+        const lx = x + ((x - cx) / d) * px(14), ly = y + ((y - cy) / d) * px(14);
+        out.push(`<text class="corner-no ${i === 0 ? "ref" : ""}" x="${lx}" y="${ly}" font-size="${px(11)}">${i + 1}</text>`);
+      });
       if (this.tool === "select") {
-        for (const [x, y] of poly) out.push(`<circle class="handle" cx="${x}" cy="${y}" r="${px(5)}"/>`);
+        poly.forEach(([x, y], i) => out.push(`<circle class="handle ${i === 0 ? "ref" : ""}" cx="${x}" cy="${y}" r="${px(i === 0 ? 6 : 5)}"/>`));
       }
     }
 
@@ -431,6 +462,18 @@ class HomeTrackPanel extends HTMLElement {
       const [x, y] = this.cursor, s = px(6);
       out.push(`<path class="cross" d="M${x - s},${y}H${x + s}M${x},${y - s}V${y + s}"/>`);
     }
+
+    // Rulers: metre labels along the top and left edges.
+    const every = [0.5, 1, 2, 5, 10, 20, 50, 100].find((s) => s * this.view.scale >= 45) || 100;
+    const ruler = [];
+    for (let x = Math.ceil(vb.x / every) * every; x <= vb.x + vb.w; x += every) {
+      ruler.push(`<text class="ruler" x="${x}" y="${vb.y + px(12)}" font-size="${px(10)}">${fmt(x)}</text>`);
+    }
+    for (let y = Math.ceil(vb.y / every) * every; y <= vb.y + vb.h; y += every) {
+      if (y - vb.y < px(24)) continue;
+      ruler.push(`<text class="ruler left" x="${vb.x + px(4)}" y="${y}" font-size="${px(10)}">${fmt(y)}</text>`);
+    }
+    out.push(`<g>${ruler.join("")}</g>`);
 
     this.$svg.innerHTML = out.join("");
     const coords = this.shadowRoot.getElementById("coords");
@@ -695,6 +738,13 @@ class HomeTrackPanel extends HTMLElement {
           this.plan.floors.push(f);
           this.floorId = f.id; this.sel = null;
         });
+      case "add-floor-below":
+        return this._mutate(() => {
+          const f = m.newFloorBelow(this.plan);
+          this.plan.floors.push(f);
+          this.floorId = f.id; this.sel = null;
+          this._p3dFitPending = true;
+        });
       case "delete-floor":
         if (!this._confirmFloor) { this._confirmFloor = true; return this._renderSide(); }
         this._confirmFloor = false;
@@ -730,6 +780,26 @@ class HomeTrackPanel extends HTMLElement {
     const target = scope === "floor" ? this._floor() : this._selected();
     if (!target) return;
     let value = e.target.value;
+    if (scope === "wall" || (scope === "room" && (key === "x" || key === "y"))) {
+      // Geometry edits: move the room by its reference corner, or set a wall length.
+      const num = parseFloat(value);
+      if (!Number.isFinite(num)) return;
+      if (scope === "wall") {
+        if (num < 0.1) return;
+        target.polygon = m.setEdgeLength(target.polygon, Number(key), num);
+      } else {
+        const [x0, y0] = target.polygon[0];
+        target.polygon = m.translatePolygon(target.polygon, key === "x" ? num - x0 : 0, key === "y" ? num - y0 : 0);
+      }
+      if (committed) {
+        this._commit(this._editBefore);
+        this._editBefore = null;
+        // Re-render after focus has moved (Tab), so the newly focused field keeps focus.
+        requestAnimationFrame(() => this._renderSide());
+      }
+      this._renderHeader(); this._render2d(); this._schedule3d();
+      return;
+    }
     if (["x", "y", "z", "elevation", "height"].includes(key)) {
       value = parseFloat(value);
       if (!Number.isFinite(value)) return;
@@ -775,87 +845,5 @@ class HomeTrackPanel extends HTMLElement {
     if (tool) this._setTool(tool.id);
   }
 }
-
-const STYLE = `
-:host { display: block; height: 100vh; height: 100dvh; background: var(--primary-background-color, #fafafa);
-  color: var(--primary-text-color, #212121); font-family: var(--paper-font-body1_-_font-family, Roboto, system-ui, sans-serif); font-size: 14px;
-  --accent: var(--primary-color, #03a9f4); --line: var(--divider-color, rgba(0,0,0,.12)); --card: var(--card-background-color, #fff);
-  --muted: var(--secondary-text-color, #727272); }
-.root { display: flex; flex-direction: column; height: 100%; }
-button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
-button:hover:not(:disabled) { border-color: var(--accent); }
-button:disabled { opacity: .45; cursor: default; }
-button.primary { background: var(--accent); color: var(--text-primary-color, #fff); border-color: var(--accent); }
-button.danger { color: var(--error-color, #db4437); }
-.header { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px; box-sizing: border-box;
-  background: var(--app-header-background-color, var(--accent)); color: var(--app-header-text-color, #fff); }
-.header button { background: transparent; color: inherit; border-color: rgba(255,255,255,.4); }
-.header button.primary { background: rgba(255,255,255,.2); }
-.title { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.status { font-size: 13px; opacity: .85; white-space: nowrap; }
-.spacer { flex: 1; }
-.bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--card); }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.chip { border-radius: 16px; }
-.chip.on { background: var(--accent); color: var(--text-primary-color, #fff); border-color: var(--accent); }
-.chip.add { border-style: dashed; }
-.seg { display: inline-flex; }
-.seg button { border-radius: 0; margin-left: -1px; }
-.seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
-.seg button:last-child { border-radius: 0 6px 6px 0; }
-.seg button.on { background: var(--accent); color: var(--text-primary-color, #fff); border-color: var(--accent); position: relative; }
-.snap { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-select, input { font: inherit; color: var(--primary-text-color, #212121); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; box-sizing: border-box; }
-.body { flex: 1; display: grid; grid-template-columns: 1fr 1fr 300px; min-height: 0; }
-.body.mode-2d { grid-template-columns: 1fr 300px; } .body.mode-2d .canvas3d { display: none; }
-.body.mode-3d { grid-template-columns: 1fr 300px; } .body.mode-3d .canvas2d { display: none; }
-.canvas2d, .canvas3d { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
-.canvas3d { border-left: 1px solid var(--line); background: var(--secondary-background-color, #f0f0f0); }
-svg { width: 100%; height: 100%; display: block; touch-action: none; user-select: none; cursor: crosshair; background: var(--card); }
-svg.panning { cursor: grabbing; }
-.overlay { position: absolute; z-index: 1; display: flex; gap: 8px; align-items: center; pointer-events: none; }
-.overlay > * { pointer-events: auto; }
-.tl { top: 8px; left: 8px; } .bl { bottom: 8px; left: 8px; font-size: 12px; color: var(--muted); } .br { bottom: 8px; right: 8px; }
-.hint { max-width: 60%; font-size: 12px; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
-.check { display: flex; gap: 4px; align-items: center; font-size: 12px; background: var(--card); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); }
-aside { border-left: 1px solid var(--line); background: var(--card); padding: 12px 14px; overflow: auto; }
-aside h3 { margin: 0 0 12px; font-size: 16px; } aside h4 { margin: 16px 0 6px; font-size: 13px; color: var(--muted); font-weight: 500; }
-aside label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
-aside label input, aside label select { width: 100%; font-size: 14px; }
-.row2, .row3 { display: grid; gap: 8px; } .row2 { grid-template-columns: 1fr 1fr; } .row3 { grid-template-columns: 1fr 1fr 1fr; }
-dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 6px 0 12px; font-size: 13px; } dt { color: var(--muted); } dd { margin: 0; }
-.actions { display: flex; gap: 8px; justify-content: space-between; margin-top: 12px; }
-.muted { color: var(--muted); font-size: 12px; } .center { text-align: center; margin-top: 40%; }
-.list { list-style: none; margin: 0; padding: 0; }
-.list li { display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
-.list li:hover { background: var(--secondary-background-color, #f0f0f0); } .list li.empty { cursor: default; }
-.help { margin-top: 16px; font-size: 12px; color: var(--muted); } .help p { line-height: 1.6; }
-.g { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.g5 { stroke: var(--muted); stroke-opacity: .35; stroke-width: 1; vector-effect: non-scaling-stroke; }
-.axis { stroke: var(--muted); stroke-opacity: .6; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.ghost { fill: none; stroke: var(--muted); stroke-dasharray: 4 4; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.room { fill: var(--c); fill-opacity: .18; stroke: var(--c); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-.room.sel { fill-opacity: .3; stroke: #ff9800; stroke-width: 3; }
-.label { text-anchor: middle; dominant-baseline: middle; fill: var(--primary-text-color, #212121); font-weight: 500; pointer-events: none; }
-.label.sub { fill: var(--muted); font-weight: 400; }
-.dim { text-anchor: middle; dominant-baseline: middle; fill: #e65100; paint-order: stroke; stroke: var(--card); stroke-width: 3px; vector-effect: non-scaling-stroke; pointer-events: none; }
-.handle { fill: #fff; stroke: #ff9800; stroke-width: 2; vector-effect: non-scaling-stroke; cursor: move; }
-.rec { fill: #43a047; stroke: #fff; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.rec.sel { fill: #ff9800; }
-.rec-label { text-anchor: middle; fill: #2e7d32; paint-order: stroke; stroke: var(--card); stroke-width: 3px; vector-effect: non-scaling-stroke; pointer-events: none; }
-.draft { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
-.draft.fill { fill: var(--accent); fill-opacity: .12; }
-.first { fill: var(--card); stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; } .first.ok { fill: var(--accent); }
-.corner { fill: var(--accent); }
-.cross { stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-:host([narrow]) .body, :host([narrow]) .body.mode-2d, :host([narrow]) .body.mode-3d { grid-template-columns: 1fr; grid-template-rows: minmax(300px, 1fr) auto; }
-:host([narrow]) .body:not(.mode-2d):not(.mode-3d) { grid-template-rows: minmax(260px, 1fr) minmax(220px, 1fr) auto; }
-:host([narrow]) .canvas3d { border-left: 0; border-top: 1px solid var(--line); }
-:host([narrow]) aside { border-left: 0; border-top: 1px solid var(--line); }
-:host([narrow]) { overflow: auto; }
-:host([narrow]) .root { height: auto; min-height: 100%; }
-:host([narrow]) .title { font-size: 17px; }
-:host([narrow]) .hint { display: none; }
-`;
 
 customElements.define("hometrack-panel", HomeTrackPanel);

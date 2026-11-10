@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HomeTrack dev harness</title>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    hometrack-panel { height: 100vh; }
+  </style>
+</head>
+<body>
+  <!-- A stand-in for Home Assistant: keeps the plan in localStorage. -->
+  <script type="module">
+    import "./hometrack-panel.js";
+
+    const KEY = "hometrack-dev-plan";
+    const sample = {
+      version: 1,
+      floors: [
+        { id: "ground", name: "Ground floor", elevation: 0, height: 2.5 },
+        { id: "first", name: "First floor", elevation: 2.7, height: 2.4 },
+      ],
+      rooms: [
+        { id: "r1", name: "Living room", floor_id: "ground", area_id: "living_room", polygon: [[0, 0], [5, 0], [5, 4], [0, 4]] },
+        { id: "r2", name: "Kitchen", floor_id: "ground", area_id: "kitchen", polygon: [[5, 0], [9, 0], [9, 3], [5, 3]] },
+        { id: "r3", name: "Hall", floor_id: "ground", area_id: null, polygon: [[5, 3], [9, 3], [9, 6], [7, 6], [7, 4], [5, 4]] },
+        { id: "r4", name: "Bedroom", floor_id: "first", area_id: "bedroom", polygon: [[0, 0], [5, 0], [5, 4], [0, 4]] },
+        { id: "r5", name: "Bathroom", floor_id: "first", area_id: null, polygon: [[5, 0], [9, 0], [9, 3], [5, 3]] },
+      ],
+      receivers: [
+        { id: "x1", name: "Lounge proxy", floor_id: "ground", x: 0.2, y: 3.8, z: 0.4, source: "AA:BB:CC:00:00:01" },
+        { id: "x2", name: "Kitchen proxy", floor_id: "ground", x: 8.8, y: 0.2, z: 0.4, source: null },
+        { id: "x3", name: "Bedroom proxy", floor_id: "first", x: 4.8, y: 3.8, z: 0.4, source: null },
+      ],
+    };
+    const read = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch { return null; } };
+    let plan = new URLSearchParams(location.search).has("empty")
+      ? { version: 1, floors: [{ id: "ground", name: "Ground floor", elevation: 0, height: 2.5 }], rooms: [], receivers: [] }
+      : read() || sample;
+
+    const hass = {
+      areas: {
+        living_room: { area_id: "living_room", name: "Living room" },
+        kitchen: { area_id: "kitchen", name: "Kitchen" },
+        bedroom: { area_id: "bedroom", name: "Bedroom" },
+        office: { area_id: "office", name: "Office" },
+      },
+      async callWS(msg) {
+        await new Promise((r) => setTimeout(r, 50));
+        if (msg.type === "hometrack/plan/get") return { plan: structuredClone(plan) };
+        if (msg.type === "hometrack/plan/save") {
+          plan = structuredClone(msg.plan);
+          try { localStorage.setItem(KEY, JSON.stringify(plan)); } catch {}
+          return { plan: structuredClone(plan) };
+        }
+        if (msg.type === "hometrack/scanners") return { scanners: [{ source: "AA:BB:CC:00:00:01", name: "esp32-c6-lounge" }, { source: "AA:BB:CC:00:00:02", name: "esp32-c6-kitchen" }] };
+        throw { code: "unknown_command", message: msg.type };
+      },
+    };
+
+    const el = document.createElement("hometrack-panel");
+    el.narrow = window.innerWidth < 870;
+    document.body.appendChild(el);
+    el.hass = hass;
+    window.panel = el;
+  </script>
+</body>
+</html>

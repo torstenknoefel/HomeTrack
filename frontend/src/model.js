@@ -44,6 +44,41 @@ export function newFloorAbove(plan) {
   return { id: uid("floor"), name: `Floor ${floors.length}`, elevation, height: DEFAULT_STOREY };
 }
 
+/** A new floor directly below the lowest one, for cellars and basements. */
+export function newFloorBelow(plan) {
+  const floors = sortedFloors(plan);
+  const bottom = floors[0];
+  const elevation = bottom ? round(bottom.elevation - DEFAULT_STOREY) : -DEFAULT_STOREY;
+  const n = floors.filter((f) => f.elevation < 0).length;
+  return { id: uid("floor"), name: n ? `Basement ${n + 1}` : "Basement", elevation, height: DEFAULT_STOREY };
+}
+
+export function translatePolygon(poly, dx, dy) {
+  return poly.map(([x, y]) => [round(x + dx), round(y + dy)]);
+}
+
+/**
+ * Set the length of wall i (corner i to corner i+1) by stretching the room
+ * along that wall: every corner beyond the wall's midpoint moves by the
+ * difference. Rectangles stay rectangles; the opposite wall follows.
+ */
+export function setEdgeLength(poly, i, length) {
+  const a = poly[i], b = poly[(i + 1) % poly.length];
+  const len = dist(a, b);
+  if (!(length > 0) || len < 1e-9) return poly;
+  const ux = (b[0] - a[0]) / len, uy = (b[1] - a[1]) / len;
+  const delta = length - len;
+  return poly.map(([x, y]) => {
+    const t = (x - a[0]) * ux + (y - a[1]) * uy;
+    return t > len / 2 + 1e-9 ? [round(x + ux * delta), round(y + uy * delta)] : [x, y];
+  });
+}
+
+/** Lengths of all walls; wall i runs from corner i to corner i+1. */
+export function edgeLengths(poly) {
+  return poly.map((a, i) => dist(a, poly[(i + 1) % poly.length]));
+}
+
 /** Shoelace area, always positive (m²). */
 export function polygonArea(poly) {
   let s = 0;

@@ -1,0 +1,38 @@
+name: Release
+
+# Builds the panel and attaches hometrack.zip to a published release.
+# HACS installs from that zip (hacs.json: zip_release).
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build panel
+        working-directory: frontend
+        run: |
+          npm install --no-package-lock
+          npm test
+          npm run build
+      - name: Check manifest version matches the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(jq -r .version custom_components/hometrack/manifest.json)
+          if [ "${tag%%-*}" != "$manifest" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match manifest version $manifest"; exit 1
+          fi
+      - name: Zip integration
+        run: cd custom_components/hometrack && zip -r "$GITHUB_WORKSPACE/hometrack.zip" . -x '__pycache__/*'
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" hometrack.zip --clobber

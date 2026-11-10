@@ -1,0 +1,7 @@
+{
+  "name": "HomeTrack",
+  "homeassistant": "2024.7.0",
+  "zip_release": true,
+  "filename": "hometrack.zip",
+  "render_readme": true
+}

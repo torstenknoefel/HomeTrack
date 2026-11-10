@@ -57,8 +57,10 @@ export class Plan3D {
     const floors = sortedFloors(plan);
     const top = floors.length ? floors[floors.length - 1] : { elevation: 0, height: 2.5 };
     const topY = top.elevation + top.height;
-    const cx = (b.minX + b.maxX) / 2, cz = (b.minY + b.maxY) / 2, cy = topY / 2;
-    const radius = Math.max(2, 0.5 * Math.hypot(b.maxX - b.minX, b.maxY - b.minY, topY));
+    // Include cellars: the lowest floor may sit below ground level (y = 0).
+    const bottomY = Math.min(0, floors.length ? floors[0].elevation : 0);
+    const cx = (b.minX + b.maxX) / 2, cz = (b.minY + b.maxY) / 2, cy = (topY + bottomY) / 2;
+    const radius = Math.max(2, 0.5 * Math.hypot(b.maxX - b.minX, b.maxY - b.minY, topY - bottomY));
     const half = THREE.MathUtils.degToRad(this.camera.fov / 2);
     const distance = (radius / Math.sin(half)) / Math.min(1, this.camera.aspect) * 0.85;
     const dir = new THREE.Vector3(0.55, 0.6, 0.75).normalize();

@@ -76,3 +76,39 @@ test("roomAt prefers the smallest containing room", () => {
   assert.equal(m.roomAt(plan, "ground", [8, 8]).id, "big");
   assert.equal(m.roomAt(plan, "ground", [20, 8]), null);
 });
+
+test("floors can be added below for cellars", () => {
+  const plan = m.defaultPlan();
+  const f = m.newFloorBelow(plan);
+  assert.equal(f.elevation, -2.5);
+  assert.equal(f.name, "Basement");
+  plan.floors.push(f);
+  assert.equal(m.sortedFloors(plan)[0].id, f.id);
+  assert.equal(m.newFloorBelow(plan).elevation, -5);
+  assert.equal(m.newFloorBelow(plan).name, "Basement 2");
+});
+
+test("translatePolygon moves every corner", () => {
+  assert.deepEqual(m.translatePolygon(square, 1, -0.5), [[1, -0.5], [5, -0.5], [5, 2.5], [1, 2.5]]);
+});
+
+test("setEdgeLength stretches a rectangle and keeps it rectangular", () => {
+  const wider = m.setEdgeLength(square, 0, 5);
+  assert.deepEqual(wider, [[0, 0], [5, 0], [5, 3], [0, 3]]);
+  const taller = m.setEdgeLength(wider, 1, 3.5);
+  assert.deepEqual(taller, [[0, 0], [5, 0], [5, 3.5], [0, 3.5]]);
+  assert.deepEqual(m.edgeLengths(taller), [5, 3.5, 5, 3.5]);
+  // Editing the wall that wraps around (corner 4 -> 1) works too.
+  assert.deepEqual(m.edgeLengths(m.setEdgeLength(square, 3, 2)), [4, 2, 4, 2]);
+});
+
+test("setEdgeLength stretches an L-shape along the wall", () => {
+  const l = [[0, 0], [4, 0], [4, 1], [1, 1], [1, 3], [0, 3]];
+  const out = m.setEdgeLength(l, 0, 6);
+  assert.deepEqual(out, [[0, 0], [6, 0], [6, 1], [1, 1], [1, 3], [0, 3]]);
+});
+
+test("setEdgeLength ignores invalid lengths", () => {
+  assert.equal(m.setEdgeLength(square, 0, 0), square);
+  assert.equal(m.setEdgeLength(square, 0, NaN), square);
+});

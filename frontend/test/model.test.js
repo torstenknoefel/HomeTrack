@@ -112,3 +112,17 @@ test("setEdgeLength ignores invalid lengths", () => {
   assert.equal(m.setEdgeLength(square, 0, 0), square);
   assert.equal(m.setEdgeLength(square, 0, NaN), square);
 });
+
+test("north direction helpers", () => {
+  assert.deepEqual(m.northVector(0), [0, -1]);
+  assert.deepEqual(m.northVector(90), [1, 0]);
+  assert.deepEqual(m.northVector(180), [0, 1]);
+  assert.equal(m.normalizeAngle(-90), 270);
+  assert.equal(m.normalizeAngle(360), 0);
+  assert.equal(m.normalizeAngle(725), 5);
+  // With north pointing right (+x), a wall facing up the plan faces west.
+  assert.equal(m.bearing(90, [0, -1]), 270);
+  assert.equal(m.bearing(90, [1, 0]), 0);
+  assert.equal(m.bearing(0, [0, 1]), 180);
+  assert.equal(m.defaultPlan().north, 0);
+});

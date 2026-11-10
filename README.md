@@ -14,6 +14,7 @@ HomeTrack adds a **HomeTrack** panel to the Home Assistant sidebar (admins only)
 - **Bluetooth receivers** (ESPHome Bluetooth proxies) placed where they really are, including their height above the floor.
 - Rooms can be linked to Home Assistant **areas**, and receivers to the Bluetooth proxies Home Assistant has found.
 - A live **3D preview** of the whole house next to the 2D editor.
+- **North direction** for the house (degrees clockwise from "up" on the plan), set by typing or by dragging the compass. It is stored in the plan for future uses such as heating, blinds or sun-position automations.
 
 The plan is stored in Home Assistant (`.storage/hometrack.plan`).
 

@@ -1,9 +1,12 @@
 """House plan: data model, validation and storage.
 
 Coordinates are metres. Each floor has an elevation (height of its floor
-surface above the lowest reference) and a storey height. Room polygons and
+surface above ground level, negative for cellars) and a storey height. Room polygons and
 receiver positions use (x, y) on the floor plane; a receiver's z is its height
-above its own floor.
+above its own floor. On the plan x points right and y points down (towards
+the viewer). `north` is the compass direction of north in degrees, measured
+clockwise from "up" on the plan (the -y direction): 0 means north is up,
+90 means north points along +x.
 """
 
 from __future__ import annotations
@@ -57,6 +60,9 @@ RECEIVER_SCHEMA = vol.Schema(
 PLAN_SCHEMA = vol.Schema(
     {
         vol.Required("version"): PLAN_VERSION,
+        vol.Optional("north", default=0.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0, max=360, max_included=False)
+        ),
         vol.Required("floors"): vol.All([FLOOR_SCHEMA], vol.Length(min=1, max=20)),
         vol.Required("rooms"): vol.All([ROOM_SCHEMA], vol.Length(max=500)),
         vol.Required("receivers"): vol.All([RECEIVER_SCHEMA], vol.Length(max=200)),
@@ -65,6 +71,7 @@ PLAN_SCHEMA = vol.Schema(
 
 DEFAULT_PLAN: dict[str, Any] = {
     "version": PLAN_VERSION,
+    "north": 0.0,
     "floors": [{"id": "ground", "name": "Ground floor", "elevation": 0.0, "height": 2.5}],
     "rooms": [],
     "receivers": [],

@@ -38,8 +38,17 @@ def test_optional_fields_get_defaults():
         plan_with(rooms=[ROOM, ROOM]),
         plan_with(version=2),
         plan_with(unexpected=True),
+        plan_with(north=360),
+        plan_with(north=-1),
     ],
 )
 def test_invalid_plans_are_rejected(bad):
     with pytest.raises(vol.Invalid):
         validate_plan(bad)
+
+
+def test_north_defaults_to_zero_for_older_plans():
+    old = copy.deepcopy(DEFAULT_PLAN)
+    del old["north"]
+    assert validate_plan(old)["north"] == 0.0
+    assert validate_plan(plan_with(north=271.5))["north"] == 271.5

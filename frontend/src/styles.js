@@ -38,7 +38,7 @@ svg { width: 100%; height: 100%; display: block; touch-action: none; user-select
 svg.panning { cursor: grabbing; }
 .overlay { position: absolute; z-index: 1; display: flex; gap: 8px; align-items: center; pointer-events: none; }
 .overlay > * { pointer-events: auto; }
-.tl { top: 8px; left: 8px; } .bl { bottom: 8px; left: 8px; font-size: 12px; color: var(--muted); } .br { bottom: 8px; right: 8px; }
+.tl { top: 8px; left: 8px; } .tr { top: 8px; right: 8px; } .bl { bottom: 8px; left: 8px; font-size: 12px; color: var(--muted); } .br { bottom: 8px; right: 8px; }
 .hint { max-width: 60%; font-size: 12px; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
 .check { display: flex; gap: 4px; align-items: center; font-size: 12px; background: var(--card); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); }
 aside { border-left: 1px solid var(--line); background: var(--card); padding: 12px 14px; overflow: auto; }
@@ -67,6 +67,12 @@ aside label.wall input { width: 80px; }
 .ruler.left { text-anchor: start; dominant-baseline: middle; }
 .corner-no { fill: #e65100; text-anchor: middle; dominant-baseline: middle; font-weight: 500; paint-order: stroke; stroke: var(--card); stroke-width: 3px; vector-effect: non-scaling-stroke; pointer-events: none; }
 .corner-no.ref { font-weight: 700; }
+.compass { display: flex; flex-direction: column; align-items: center; cursor: grab; user-select: none; touch-action: none; }
+.compass svg { display: block; }
+.dial { fill: var(--card); fill-opacity: .9; stroke: var(--line); stroke-width: 1.5; }
+.needle-n { fill: #e53935; } .needle-s { fill: var(--muted); fill-opacity: .5; }
+.dial-n { font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; fill: var(--primary-text-color, #212121); paint-order: stroke; stroke: var(--card); stroke-width: 3px; }
+.dial-deg { font-size: 11px; color: var(--muted); background: var(--card); border-radius: 4px; padding: 0 4px; margin-top: -2px; }
 .ghost { fill: none; stroke: var(--muted); stroke-dasharray: 4 4; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .room { fill: var(--c); fill-opacity: .18; stroke: var(--c); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 .room.sel { fill-opacity: .3; stroke: #ff9800; stroke-width: 3; }

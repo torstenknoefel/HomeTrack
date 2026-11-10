@@ -184,6 +184,7 @@ class HomeTrackPanel extends HTMLElement {
         <div class="canvas2d" id="c2d">
           <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
           <div class="overlay tl"><button data-action="fit2d">Fit</button></div>
+          <div class="overlay tr"><div id="compass" class="compass" title="Where north is. Drag to rotate (hold Shift for 15° steps)."></div></div>
           <div id="coords" class="overlay bl"></div>
           <div id="hint" class="overlay br hint"></div>
         </div>
@@ -223,6 +224,7 @@ class HomeTrackPanel extends HTMLElement {
     svg.addEventListener("dblclick", (e) => this._onDblClick(e));
     svg.addEventListener("contextmenu", (e) => this._onContext(e));
     new ResizeObserver(() => this._render2d()).observe($("c2d"));
+    this._bindCompass($("compass"));
 
     this._renderAll();
   }
@@ -339,7 +341,10 @@ class HomeTrackPanel extends HTMLElement {
     const f = this._floor();
     const rooms = this._roomsHere(), recs = this._receiversHere();
     const canDelete = this.plan.floors.length > 1;
-    return `<h3>Floor</h3>
+    return `<h3>House</h3>
+      <label>North (° clockwise from up)<input type="number" step="1" min="0" max="359.9" data-field="plan.north" value="${fmt(this.plan.north || 0, 1)}"></label>
+      <p class="muted">Where north is on the plan, for later use by heating, blinds and sun-position automations. 0° means north is up, 90° means north points right. You can also drag the compass in the top-right corner.</p>
+      <h3>Floor</h3>
       <label>Name<input data-field="floor.name" value="${esc(f.name)}"></label>
       <div class="row2">
         <label>Elevation (m)<input type="number" step="0.05" data-field="floor.elevation" value="${f.elevation}"></label>
@@ -478,6 +483,55 @@ class HomeTrackPanel extends HTMLElement {
     this.$svg.innerHTML = out.join("");
     const coords = this.shadowRoot.getElementById("coords");
     coords.textContent = this.cursor ? `x ${fmt(this.cursor[0])} m · y ${fmt(this.cursor[1])} m` : `${this._floor()?.name ?? ""}`;
+    this._renderCompass();
+  }
+
+  // ── North direction ────────────────────────────────────────────────
+
+  _renderCompass() {
+    const el = this.shadowRoot.getElementById("compass");
+    if (!el) return;
+    const north = this.plan.north || 0;
+    const [nx, ny] = m.northVector(north);
+    // 64 px dial: arrow from the centre towards north, "N" just beyond its tip.
+    el.innerHTML = `<svg viewBox="-32 -32 64 64" width="64" height="64">
+      <circle class="dial" r="30"/>
+      <g transform="rotate(${north})">
+        <path class="needle-n" d="M0,-17 L5,0 L-5,0 Z"/>
+        <path class="needle-s" d="M0,17 L5,0 L-5,0 Z"/>
+      </g>
+      <text class="dial-n" x="${nx * 24}" y="${ny * 24 + 1}">N</text>
+    </svg><div class="dial-deg">${fmt(north, 1)}°</div>`;
+  }
+
+  _bindCompass(el) {
+    const angleAt = (e) => {
+      const r = el.querySelector("svg").getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+      const deg = (Math.atan2(dx, -dy) * 180) / Math.PI;
+      const step = e.shiftKey ? 15 : 1;
+      return m.normalizeAngle(Math.round(deg / step) * step);
+    };
+    el.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      this._compassBefore = JSON.stringify(this.plan);
+      this.plan.north = angleAt(e);
+      this._renderCompass(); this._schedule3d(); this._renderHeader();
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (this._compassBefore == null) return;
+      this.plan.north = angleAt(e);
+      this._renderCompass(); this._schedule3d(); this._renderHeader();
+    });
+    el.addEventListener("pointerup", (e) => {
+      if (this._compassBefore == null) return;
+      el.releasePointerCapture(e.pointerId);
+      this._commit(this._compassBefore);
+      this._compassBefore = null;
+      this._renderAll();
+    });
   }
 
   _ensure3d() {
@@ -777,7 +831,7 @@ class HomeTrackPanel extends HTMLElement {
     if (!field) return;
     if (this._editBefore == null) this._editBefore = JSON.stringify(this.plan);
     const [scope, key] = field.split(".");
-    const target = scope === "floor" ? this._floor() : this._selected();
+    const target = scope === "floor" ? this._floor() : scope === "plan" ? this.plan : this._selected();
     if (!target) return;
     let value = e.target.value;
     if (scope === "wall" || (scope === "room" && (key === "x" || key === "y"))) {
@@ -800,9 +854,10 @@ class HomeTrackPanel extends HTMLElement {
       this._renderHeader(); this._render2d(); this._schedule3d();
       return;
     }
-    if (["x", "y", "z", "elevation", "height"].includes(key)) {
+    if (["x", "y", "z", "elevation", "height", "north"].includes(key)) {
       value = parseFloat(value);
       if (!Number.isFinite(value)) return;
+      if (key === "north") value = m.normalizeAngle(value);
       if (key === "z") value = Math.max(0, value);
       if (key === "height") value = Math.max(1, value);
     }

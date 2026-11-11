@@ -37,11 +37,15 @@ In Select mode, double-click a room edge to add a corner and right-click a corne
 
 ## Installation
 
-### HACS (custom repository)
+### Marketplace (Home Assistant 2026.11 and newer)
 
-1. In HACS, add `https://github.com/torstenknoefel/HomeTrack` as a custom repository of type **Integration**.
-2. Install **HomeTrack** and restart Home Assistant.
+1. Go to **Settings → Marketplace**, select **Add from link** and enter `torstenknoefel/HomeTrack`. Adding a link needs a GitHub connection; the dialog asks you to connect if you haven't yet.
+2. Install **HomeTrack**, then restart Home Assistant from the repair under **Settings → System → Repairs**.
 3. Go to **Settings → Devices & services → Add integration → HomeTrack**.
+
+Updates appear under **Settings → Updates**. After an update, restart from the repair and reload the browser page.
+
+On Home Assistant 2026.10 and older, use HACS instead: add `https://github.com/torstenknoefel/HomeTrack` as a custom repository of type **Integration** and follow the same steps.
 
 ### Manual
 

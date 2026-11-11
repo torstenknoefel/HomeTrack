@@ -17,6 +17,8 @@
     const KEY = "hometrack-dev-plan";
     const sample = {
       version: 1,
+      north: 0,
+      reference_floor_id: "ground",
       floors: [
         { id: "ground", name: "Ground floor", elevation: 0, height: 2.5 },
         { id: "first", name: "First floor", elevation: 2.7, height: 2.4 },
@@ -41,10 +43,17 @@
 
     const hass = {
       areas: {
-        living_room: { area_id: "living_room", name: "Living room" },
-        kitchen: { area_id: "kitchen", name: "Kitchen" },
-        bedroom: { area_id: "bedroom", name: "Bedroom" },
-        office: { area_id: "office", name: "Office" },
+        living_room: { area_id: "living_room", name: "Living room", floor_id: "eg" },
+        kitchen: { area_id: "kitchen", name: "Kitchen", floor_id: "eg" },
+        hall: { area_id: "hall", name: "Hallway", floor_id: "eg" },
+        bedroom: { area_id: "bedroom", name: "Bedroom", floor_id: "og" },
+        office: { area_id: "office", name: "Office", floor_id: "og" },
+        cellar: { area_id: "cellar", name: "Wine cellar", floor_id: "kg" },
+      },
+      floors: {
+        kg: { floor_id: "kg", name: "Cellar", level: -1 },
+        eg: { floor_id: "eg", name: "Ground floor (HA)", level: 0 },
+        og: { floor_id: "og", name: "First floor (HA)", level: 1 },
       },
       async callWS(msg) {
         await new Promise((r) => setTimeout(r, 50));

@@ -1,6 +1,7 @@
 // Pure plan and geometry helpers (no DOM), unit-tested in test/model.test.js.
 // Plan coordinates are metres; y grows "down" the screen in the 2D editor and
-// maps to +z in the 3D view.
+// maps to +z in the 3D view. Floor elevations are relative to the plan's
+// reference floor, which is always at 0 m.
 
 export const PLAN_VERSION = 1;
 export const DEFAULT_RECEIVER_Z = 0.4;
@@ -10,7 +11,8 @@ export function defaultPlan() {
   return {
     version: PLAN_VERSION,
     north: 0,
-    floors: [{ id: "ground", name: "Ground floor", elevation: 0, height: DEFAULT_STOREY }],
+    reference_floor_id: "ground",
+    floors: [{ id: "ground", name: "Ground floor", elevation: 0, height: DEFAULT_STOREY, ha_floor_id: null }],
     rooms: [],
     receivers: [],
   };
@@ -45,6 +47,50 @@ export function northVector(north) {
 export function bearing(north, [dx, dy]) {
   const up = (Math.atan2(dx, -dy) * 180) / Math.PI; // clockwise from plan "up"
   return normalizeAngle(up - (north || 0));
+}
+
+/** The reference floor: the one named by reference_floor_id, else the floor at 0 m, else the lowest. */
+export function referenceFloor(plan) {
+  return plan.floors.find((f) => f.id === plan.reference_floor_id)
+    || plan.floors.find((f) => f.elevation === 0)
+    || sortedFloors(plan)[0];
+}
+
+/**
+ * Make `floorId` the reference floor: every elevation shifts so that floor is
+ * at 0 m. Nothing moves relative to anything else. Returns a new plan.
+ */
+export function setReferenceFloor(plan, floorId) {
+  const ref = plan.floors.find((f) => f.id === floorId);
+  if (!ref) return plan;
+  const shift = ref.elevation;
+  return {
+    ...plan,
+    reference_floor_id: floorId,
+    floors: plan.floors.map((f) => ({ ...f, elevation: round(f.elevation - shift) })),
+  };
+}
+
+/** Fill in defaults for older plans and make sure the reference floor is at 0 m. */
+export function normalizePlan(plan) {
+  const withDefaults = {
+    ...plan,
+    north: plan.north || 0,
+    floors: plan.floors.map((f) => ({ ha_floor_id: null, ...f })),
+  };
+  return setReferenceFloor(withDefaults, referenceFloor(withDefaults).id);
+}
+
+/**
+ * Display name of a room or floor: the Home Assistant area/floor name when it
+ * is linked and still exists, otherwise the plan's own name.
+ */
+export function roomName(room, areas) {
+  return (room.area_id && areas?.[room.area_id]?.name) || room.name || "Unnamed";
+}
+
+export function floorName(floor, haFloors) {
+  return (floor.ha_floor_id && haFloors?.[floor.ha_floor_id]?.name) || floor.name || "Floor";
 }
 
 export function sortedFloors(plan) {
@@ -211,13 +257,19 @@ export function roomAt(plan, floorId, p) {
   return hits[0] || null;
 }
 
-/** Remove a floor and everything on it. Refuses to remove the last floor. */
+/**
+ * Remove a floor and everything on it. Refuses to remove the last floor.
+ * If it was the reference floor, the floor closest to 0 m takes over.
+ */
 export function removeFloor(plan, floorId) {
   if (plan.floors.length <= 1) return plan;
-  return {
+  const next = {
     ...plan,
     floors: plan.floors.filter((f) => f.id !== floorId),
     rooms: plan.rooms.filter((r) => r.floor_id !== floorId),
     receivers: plan.receivers.filter((r) => r.floor_id !== floorId),
   };
+  if (plan.reference_floor_id !== floorId) return next;
+  const closest = [...next.floors].sort((a, b) => Math.abs(a.elevation) - Math.abs(b.elevation))[0];
+  return setReferenceFloor(next, closest.id);
 }

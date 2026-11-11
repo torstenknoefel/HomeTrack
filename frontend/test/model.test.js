@@ -126,3 +126,52 @@ test("north direction helpers", () => {
   assert.equal(m.bearing(0, [0, 1]), 180);
   assert.equal(m.defaultPlan().north, 0);
 });
+
+test("setReferenceFloor shifts elevations so the chosen floor is at 0 m", () => {
+  const plan = {
+    ...m.defaultPlan(),
+    floors: [
+      { id: "lower", name: "Lower", elevation: 0, height: 2.5, ha_floor_id: null },
+      { id: "entrance", name: "Entrance", elevation: 2.7, height: 2.5, ha_floor_id: null },
+      { id: "upper", name: "Upper", elevation: 5.4, height: 2.4, ha_floor_id: null },
+    ],
+    reference_floor_id: "lower",
+  };
+  const out = m.setReferenceFloor(plan, "entrance");
+  assert.equal(out.reference_floor_id, "entrance");
+  assert.deepEqual(out.floors.map((f) => f.elevation), [-2.7, 0, 2.7]);
+  assert.equal(plan.floors[0].elevation, 0); // original untouched
+  assert.equal(m.setReferenceFloor(plan, "nope"), plan);
+});
+
+test("normalizePlan fills defaults and puts the reference floor at 0 m", () => {
+  const old = { version: 1, floors: [{ id: "a", name: "A", elevation: 1, height: 2.5 }, { id: "b", name: "B", elevation: 3.5, height: 2.5 }], rooms: [], receivers: [] };
+  const out = m.normalizePlan(old);
+  assert.equal(out.north, 0);
+  assert.equal(out.reference_floor_id, "a");
+  assert.deepEqual(out.floors.map((f) => [f.elevation, f.ha_floor_id]), [[0, null], [2.5, null]]);
+});
+
+test("removing the reference floor hands over to the floor closest to 0 m", () => {
+  const plan = m.setReferenceFloor({
+    ...m.defaultPlan(),
+    floors: [
+      { id: "b", name: "B", elevation: -2.5, height: 2.5 },
+      { id: "g", name: "G", elevation: 0, height: 2.5 },
+      { id: "u", name: "U", elevation: 2.5, height: 2.5 },
+    ],
+  }, "g");
+  const out = m.removeFloor(plan, "g");
+  assert.ok(["b", "u"].includes(out.reference_floor_id));
+  assert.equal(out.floors.find((f) => f.id === out.reference_floor_id).elevation, 0);
+});
+
+test("names come from Home Assistant when linked", () => {
+  const areas = { kitchen: { area_id: "kitchen", name: "Küche" } };
+  const haFloors = { eg: { floor_id: "eg", name: "Erdgeschoss" } };
+  assert.equal(m.roomName({ name: "Room 1", area_id: "kitchen" }, areas), "Küche");
+  assert.equal(m.roomName({ name: "Room 1", area_id: "gone" }, areas), "Room 1");
+  assert.equal(m.roomName({ name: "", area_id: null }, areas), "Unnamed");
+  assert.equal(m.floorName({ name: "Ground", ha_floor_id: "eg" }, haFloors), "Erdgeschoss");
+  assert.equal(m.floorName({ name: "Ground", ha_floor_id: null }, haFloors), "Ground");
+});

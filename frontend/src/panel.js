@@ -84,9 +84,9 @@ class HomeTrackPanel extends HTMLElement {
     this._loadStarted = true;
     try {
       const { plan } = await this._hass.callWS({ type: "hometrack/plan/get" });
-      this.plan = plan;
-      this.savedJson = JSON.stringify(plan);
-      this.floorId = m.sortedFloors(plan)[0].id;
+      this.plan = m.normalizePlan(plan);
+      this.savedJson = JSON.stringify(this.plan);
+      this.floorId = m.referenceFloor(this.plan).id;
     } catch (err) {
       this.status = `Could not load the plan: ${err.message || err.code || err}`;
     }
@@ -107,8 +107,8 @@ class HomeTrackPanel extends HTMLElement {
     this._renderHeader();
     try {
       const { plan } = await this._hass.callWS({ type: "hometrack/plan/save", plan: this.plan });
-      this.plan = plan;
-      this.savedJson = JSON.stringify(plan);
+      this.plan = m.normalizePlan(plan);
+      this.savedJson = JSON.stringify(this.plan);
       this.status = "Saved";
     } catch (err) {
       this.status = `Save failed: ${err.message || err.code || err}`;
@@ -158,6 +158,10 @@ class HomeTrackPanel extends HTMLElement {
   _roomsHere() { return this.plan.rooms.filter((r) => r.floor_id === this.floorId); }
   _receiversHere() { return this.plan.receivers.filter((r) => r.floor_id === this.floorId); }
   _px(n) { return n / this.view.scale; }
+  _areas() { return this._hass?.areas || {}; }
+  _haFloors() { return this._hass?.floors || {}; }
+  _roomName(r) { return m.roomName(r, this._areas()); }
+  _floorName(f) { return m.floorName(f, this._haFloors()); }
 
   // ── Building the DOM ───────────────────────────────────────────────
 
@@ -254,7 +258,7 @@ class HomeTrackPanel extends HTMLElement {
     const r = this.shadowRoot;
     r.getElementById("floors").innerHTML =
       m.sortedFloors(this.plan).map((f) =>
-        `<button class="chip ${f.id === this.floorId ? "on" : ""}" data-action="floor" data-id="${esc(f.id)}">${esc(f.name || "Floor")}</button>`).join("") +
+        `<button class="chip ${f.id === this.floorId ? "on" : ""}" data-action="floor" data-id="${esc(f.id)}" title="${fmt(f.elevation)} m">${esc(this._floorName(f))}${f.id === this.plan.reference_floor_id ? " · 0 m" : ""}</button>`).join("") +
       `<button class="chip add" data-action="add-floor" title="Add a floor on top of the highest one">+ Floor above</button>` +
       `<button class="chip add" data-action="add-floor-below" title="Add a cellar or basement below the lowest floor">+ Floor below</button>`;
     r.getElementById("tools").innerHTML = TOOLS.map((t) =>
@@ -282,15 +286,27 @@ class HomeTrackPanel extends HTMLElement {
   }
 
   _roomProps(room) {
-    const areas = Object.values(this._hass?.areas || {}).sort((a, b) => a.name.localeCompare(b.name));
+    const areas = Object.values(this._areas()).sort((a, b) => a.name.localeCompare(b.name));
+    const linked = room.area_id && this._areas()[room.area_id];
+    // Areas on the Home Assistant floor this plan floor is linked to come first.
+    const haFloor = this._floor()?.ha_floor_id;
+    const onFloor = haFloor ? areas.filter((a) => a.floor_id === haFloor) : [];
+    const others = areas.filter((a) => !onFloor.includes(a));
+    const opt = (a) => `<option value="${esc(a.area_id)}" ${a.area_id === room.area_id ? "selected" : ""}>${esc(a.name)}</option>`;
+    const missing = room.area_id && !linked ? `<option value="${esc(room.area_id)}" selected>${esc(room.area_id)} (not found)</option>` : "";
     return `<h3>Room</h3>
-      <label>Name<input data-field="room.name" value="${esc(room.name)}"></label>
       <label>Home Assistant area
         <select data-field="room.area_id">
           <option value="">Not linked</option>
-          ${areas.map((a) => `<option value="${esc(a.area_id)}" ${a.area_id === room.area_id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
+          ${onFloor.length ? `<optgroup label="On ${esc(this._floorName(this._floor()))}">${onFloor.map(opt).join("")}</optgroup><optgroup label="Other areas">${others.map(opt).join("")}</optgroup>` : others.map(opt).join("")}
+          ${missing}
         </select>
       </label>
+      ${linked
+        ? `<label>Name<input value="${esc(linked.name)}" disabled></label>
+           <p class="muted">The name comes from the Home Assistant area, so renaming the area in Home Assistant renames it here too.</p>`
+        : `<label>Name<input data-field="room.name" value="${esc(room.name)}"></label>
+           <p class="muted">Link the room to a Home Assistant area so its name and automations stay in step with Home Assistant.</p>`}
       <h4>Position of corner 1</h4>
       <p class="muted">Corner 1 (the filled orange corner) is the room's reference point, measured from 0, 0. Changing it moves the whole room.</p>
       <div class="row2">
@@ -341,18 +357,41 @@ class HomeTrackPanel extends HTMLElement {
     const f = this._floor();
     const rooms = this._roomsHere(), recs = this._receiversHere();
     const canDelete = this.plan.floors.length > 1;
+    const haFloors = Object.values(this._haFloors()).sort((a, b) => (a.level ?? 0) - (b.level ?? 0) || a.name.localeCompare(b.name));
+    const linkedFloor = f.ha_floor_id && this._haFloors()[f.ha_floor_id];
+    const isRef = f.id === this.plan.reference_floor_id;
+    const ref = m.referenceFloor(this.plan);
     return `<h3>House</h3>
+      <label>Reference floor (0 m)
+        <select data-field="plan.reference_floor_id">
+          ${m.sortedFloors(this.plan).reverse().map((x) => `<option value="${esc(x.id)}" ${x.id === ref.id ? "selected" : ""}>${esc(this._floorName(x))}</option>`).join("")}
+        </select>
+      </label>
+      <p class="muted">All floor elevations are measured from this floor. Changing it only changes the numbers; nothing moves.</p>
       <label>North (° clockwise from up)<input type="number" step="1" min="0" max="359.9" data-field="plan.north" value="${fmt(this.plan.north || 0, 1)}"></label>
       <p class="muted">Where north is on the plan, for later use by heating, blinds and sun-position automations. 0° means north is up, 90° means north points right. You can also drag the compass in the top-right corner.</p>
       <h3>Floor</h3>
-      <label>Name<input data-field="floor.name" value="${esc(f.name)}"></label>
+      <label>Home Assistant floor
+        <select data-field="floor.ha_floor_id">
+          <option value="">Not linked</option>
+          ${haFloors.map((x) => `<option value="${esc(x.floor_id)}" ${x.floor_id === f.ha_floor_id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}
+          ${f.ha_floor_id && !linkedFloor ? `<option value="${esc(f.ha_floor_id)}" selected>${esc(f.ha_floor_id)} (not found)</option>` : ""}
+        </select>
+      </label>
+      ${haFloors.length ? "" : `<p class="muted">No floors set up in Home Assistant yet (Settings → Areas, labels &amp; zones).</p>`}
+      ${linkedFloor
+        ? `<label>Name<input value="${esc(linkedFloor.name)}" disabled></label>
+           <p class="muted">The name comes from the Home Assistant floor.</p>`
+        : `<label>Name<input data-field="floor.name" value="${esc(f.name)}"></label>`}
       <div class="row2">
-        <label>Elevation (m)<input type="number" step="0.05" data-field="floor.elevation" value="${f.elevation}"></label>
+        <label>Elevation (m)<input type="number" step="0.05" data-field="floor.elevation" value="${f.elevation}" ${isRef ? "disabled" : ""}></label>
         <label>Storey height (m)<input type="number" step="0.05" min="1" data-field="floor.height" value="${f.height}"></label>
       </div>
-      <p class="muted">Elevation is the height of this floor's surface above ground level (0 m). Cellars and basements have a negative elevation.</p>
+      <p class="muted">${isRef
+        ? "This is the reference floor, so its elevation is 0 m."
+        : `Height of this floor's surface relative to the reference floor (${esc(this._floorName(ref))}, 0 m). Floors below it are negative.`}</p>
       <h4>Rooms (${rooms.length})</h4>
-      <ul class="list">${rooms.map((r) => `<li data-action="select" data-kind="room" data-id="${esc(r.id)}"><span>${esc(r.name || "Unnamed")}</span><span class="muted">${fmt(m.polygonArea(r.polygon), 1)} m²</span></li>`).join("") || `<li class="muted empty">None yet. Use Draw room or Rectangle.</li>`}</ul>
+      <ul class="list">${rooms.map((r) => `<li data-action="select" data-kind="room" data-id="${esc(r.id)}"><span>${esc(this._roomName(r))}</span><span class="muted">${fmt(m.polygonArea(r.polygon), 1)} m²</span></li>`).join("") || `<li class="muted empty">None yet. Use Draw room or Rectangle.</li>`}</ul>
       <h4>Receivers (${recs.length})</h4>
       <ul class="list">${recs.map((r) => `<li data-action="select" data-kind="receiver" data-id="${esc(r.id)}"><span>${esc(r.name || "Unnamed")}</span><span class="muted">${fmt(r.z)} m high</span></li>`).join("") || `<li class="muted empty">None yet. Use the Receiver tool.</li>`}</ul>
       ${canDelete ? `<div class="actions"><button class="danger" data-action="delete-floor">${this._confirmFloor ? "Click again to delete floor and its contents" : "Delete floor"}</button></div>` : ""}
@@ -410,7 +449,7 @@ class HomeTrackPanel extends HTMLElement {
     });
     for (const r of this._roomsHere()) {
       const [cx, cy] = m.centroid(r.polygon);
-      out.push(`<text class="label" x="${cx}" y="${cy}" font-size="${px(13)}">${esc(r.name || "Unnamed")}</text>`);
+      out.push(`<text class="label" x="${cx}" y="${cy}" font-size="${px(13)}">${esc(this._roomName(r))}</text>`);
       out.push(`<text class="label sub" x="${cx}" y="${cy + px(15)}" font-size="${px(11)}">${fmt(m.polygonArea(r.polygon), 1)} m²</text>`);
     }
 
@@ -482,7 +521,7 @@ class HomeTrackPanel extends HTMLElement {
 
     this.$svg.innerHTML = out.join("");
     const coords = this.shadowRoot.getElementById("coords");
-    coords.textContent = this.cursor ? `x ${fmt(this.cursor[0])} m · y ${fmt(this.cursor[1])} m` : `${this._floor()?.name ?? ""}`;
+    coords.textContent = this.cursor ? `x ${fmt(this.cursor[0])} m · y ${fmt(this.cursor[1])} m` : (this._floor() ? this._floorName(this._floor()) : "");
     this._renderCompass();
   }
 
@@ -834,6 +873,14 @@ class HomeTrackPanel extends HTMLElement {
     const target = scope === "floor" ? this._floor() : scope === "plan" ? this.plan : this._selected();
     if (!target) return;
     let value = e.target.value;
+    if (field === "plan.reference_floor_id") {
+      this.plan = m.setReferenceFloor(this.plan, value);
+      this._commit(this._editBefore);
+      this._editBefore = null;
+      this._p3dFitPending = true;
+      this._renderAll();
+      return;
+    }
     if (scope === "wall" || (scope === "room" && (key === "x" || key === "y"))) {
       // Geometry edits: move the room by its reference corner, or set a wall length.
       const num = parseFloat(value);
@@ -861,11 +908,8 @@ class HomeTrackPanel extends HTMLElement {
       if (key === "z") value = Math.max(0, value);
       if (key === "height") value = Math.max(1, value);
     }
-    if (key === "area_id" || key === "source") value = value || null;
+    if (key === "area_id" || key === "source" || key === "ha_floor_id") value = value || null;
     target[key] = value;
-    if (scope === "room" && key === "area_id" && value && /^Room \d+$/.test(target.name)) {
-      target.name = this._hass?.areas?.[value]?.name || target.name;
-    }
     if (committed) {
       this._commit(this._editBefore);
       this._editBefore = null;

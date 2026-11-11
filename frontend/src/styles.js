@@ -29,6 +29,7 @@ button.danger { color: var(--error-color, #db4437); }
 .seg button.on { background: var(--accent); color: var(--text-primary-color, #fff); border-color: var(--accent); position: relative; }
 .snap { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 select, input { font: inherit; color: var(--primary-text-color, #212121); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; box-sizing: border-box; }
+input:disabled { background: var(--secondary-background-color, #f0f0f0); color: var(--muted); cursor: not-allowed; }
 .body { flex: 1; display: grid; grid-template-columns: 1fr 1fr 300px; min-height: 0; }
 .body.mode-2d { grid-template-columns: 1fr 300px; } .body.mode-2d .canvas3d { display: none; }
 .body.mode-3d { grid-template-columns: 1fr 300px; } .body.mode-3d .canvas2d { display: none; }

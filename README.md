@@ -8,11 +8,12 @@ A Home Assistant integration for tracking a Bluetooth device (for example a smar
 
 HomeTrack adds a **HomeTrack** panel to the Home Assistant sidebar (admins only) where you build a model of your home:
 
-- **Floors** with their elevation above ground level (0 m) and storey height. Add floors above or below, so cellars and basements have a negative elevation.
+- **Floors** with their storey height and elevation relative to a **reference floor** you choose (0 m). Floors below it, such as cellars, have a negative elevation. Choosing another reference floor only changes the numbers.
 - **Rooms** drawn on a metre grid: click out the corners, or drag a rectangle. Corners snap to the grid and to the corners of neighbouring rooms and the floor below, so walls line up. Coordinates are measured from the 0, 0 marker, with x to the right and y downwards.
 - Each room's **corner 1** is its reference point. Type its x/y to move the room, or type a **wall length** to stretch the room along that wall.
 - **Bluetooth receivers** (ESPHome Bluetooth proxies) placed where they really are, including their height above the floor.
-- Rooms can be linked to Home Assistant **areas**, and receivers to the Bluetooth proxies Home Assistant has found.
+- Rooms and floors can be linked to Home Assistant **areas** and **floors**. Linked items take their name from Home Assistant, so a rename there can't get out of sync with the plan. When picking an area, those on the linked Home Assistant floor are listed first.
+- Receivers can be linked to the Bluetooth proxies Home Assistant has found.
 - A live **3D preview** of the whole house next to the 2D editor.
 - **North direction** for the house (degrees clockwise from "up" on the plan), set by typing or by dragging the compass. It is stored in the plan for future uses such as heating, blinds or sun-position automations.
 

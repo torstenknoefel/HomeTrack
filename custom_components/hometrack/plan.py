@@ -1,12 +1,17 @@
 """House plan: data model, validation and storage.
 
 Coordinates are metres. Each floor has an elevation (height of its floor
-surface above ground level, negative for cellars) and a storey height. Room polygons and
+surface relative to the plan's reference floor, which is at 0 m; floors below
+it are negative) and a storey height. Room polygons and
 receiver positions use (x, y) on the floor plane; a receiver's z is its height
 above its own floor. On the plan x points right and y points down (towards
 the viewer). `north` is the compass direction of north in degrees, measured
 clockwise from "up" on the plan (the -y direction): 0 means north is up,
 90 means north points along +x.
+
+Rooms and floors can be linked to Home Assistant's own areas (`area_id`) and
+floors (`ha_floor_id`). When linked, Home Assistant is the source of truth
+for the name; the plan's `name` is only a fallback for unlinked items.
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ FLOOR_SCHEMA = vol.Schema(
         vol.Required("name"): _NAME,
         vol.Required("elevation"): vol.All(vol.Coerce(float), vol.Range(min=-50, max=200)),
         vol.Required("height"): vol.All(vol.Coerce(float), vol.Range(min=1, max=20)),
+        vol.Optional("ha_floor_id", default=None): vol.Any(None, str),
     }
 )
 
@@ -60,6 +66,7 @@ RECEIVER_SCHEMA = vol.Schema(
 PLAN_SCHEMA = vol.Schema(
     {
         vol.Required("version"): PLAN_VERSION,
+        vol.Optional("reference_floor_id", default=None): vol.Any(None, _ID),
         vol.Optional("north", default=0.0): vol.All(
             vol.Coerce(float), vol.Range(min=0, max=360, max_included=False)
         ),
@@ -72,7 +79,10 @@ PLAN_SCHEMA = vol.Schema(
 DEFAULT_PLAN: dict[str, Any] = {
     "version": PLAN_VERSION,
     "north": 0.0,
-    "floors": [{"id": "ground", "name": "Ground floor", "elevation": 0.0, "height": 2.5}],
+    "reference_floor_id": "ground",
+    "floors": [
+        {"id": "ground", "name": "Ground floor", "elevation": 0.0, "height": 2.5, "ha_floor_id": None}
+    ],
     "rooms": [],
     "receivers": [],
 }
@@ -90,7 +100,19 @@ def validate_plan(data: Any) -> dict[str, Any]:
         for item in plan[kind]:
             if item["floor_id"] not in floor_ids:
                 raise vol.Invalid(f"{kind[:-1]} {item['id']} refers to unknown floor")
+    if plan["reference_floor_id"] is None:
+        plan["reference_floor_id"] = default_reference_floor(plan["floors"])
+    elif plan["reference_floor_id"] not in floor_ids:
+        raise vol.Invalid("reference_floor_id refers to unknown floor")
     return plan
+
+
+def default_reference_floor(floors: list[dict[str, Any]]) -> str:
+    """The floor at elevation 0 if there is one, otherwise the lowest floor."""
+    at_zero = [f for f in floors if f["elevation"] == 0]
+    if at_zero:
+        return at_zero[0]["id"]
+    return min(floors, key=lambda f: f["elevation"])["id"]
 
 
 class PlanStore:
